@@ -55,6 +55,20 @@ const nextCorner = previous => {
   const corners = ['close-top-left', 'close-top-right', 'close-bottom-left', 'close-bottom-right'].filter(corner => corner !== previous);
   return corners[Math.floor(Math.random() * corners.length)];
 };
+const randomWindowPosition = (previous, width = 410, height = 290) => {
+  const margin = 14;
+  const maxLeft = Math.max(margin, window.innerWidth - Math.min(width, window.innerWidth - margin * 2) - margin);
+  const maxTop = Math.max(margin, window.innerHeight - Math.min(height, window.innerHeight - margin * 2) - margin);
+  let position = { left: margin, top: margin };
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    position = {
+      left: Math.round(margin + Math.random() * (maxLeft - margin)),
+      top: Math.round(margin + Math.random() * (maxTop - margin)),
+    };
+    if (!previous || Math.hypot(position.left - previous.left, position.top - previous.top) > 120) break;
+  }
+  return position;
+};
 
 function AuthScreen({ onAuth }) {
   const [mode, setMode] = useState('register');
@@ -138,7 +152,27 @@ function TypingGate({ task, onAccepted }) {
 
 function PopupWindow({ popup, onClose, onMinimize, onRestore }) {
   const drag = useRef(null);
-  const [position, setPosition] = useState(null);
+  const modalRef = useRef(null);
+  const lastPopupNumber = useRef(popup.number);
+  const [position, setPosition] = useState(() => randomWindowPosition());
+  useEffect(() => {
+    if (lastPopupNumber.current === popup.number) return;
+    const rect = modalRef.current?.getBoundingClientRect();
+    setPosition(current => randomWindowPosition(current, rect?.width || 410, rect?.height || 290));
+    lastPopupNumber.current = popup.number;
+  }, [popup.number]);
+  useEffect(() => {
+    const resize = () => {
+      const rect = modalRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition(current => ({
+        left: Math.max(8, Math.min(Math.max(8, window.innerWidth - rect.width - 8), current.left)),
+        top: Math.max(8, Math.min(Math.max(8, window.innerHeight - rect.height - 8), current.top)),
+      }));
+    };
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
   function pointerDown(event) {
     if (event.target.closest('button')) return;
     const rect = event.currentTarget.parentElement.getBoundingClientRect();
@@ -147,10 +181,18 @@ function PopupWindow({ popup, onClose, onMinimize, onRestore }) {
   }
   function pointerMove(event) {
     if (!drag.current) return;
-    setPosition({ left: Math.max(8, Math.min(window.innerWidth - 420, drag.current.left + event.clientX - drag.current.x)), top: Math.max(8, Math.min(window.innerHeight - 80, drag.current.top + event.clientY - drag.current.y)) });
+    const rect = modalRef.current?.getBoundingClientRect();
+    const width = rect?.width || 410;
+    const height = rect?.height || 290;
+    const maxLeft = Math.max(8, window.innerWidth - width - 8);
+    const maxTop = Math.max(8, window.innerHeight - height - 8);
+    setPosition({
+      left: Math.max(8, Math.min(maxLeft, drag.current.left + event.clientX - drag.current.x)),
+      top: Math.max(8, Math.min(maxTop, drag.current.top + event.clientY - drag.current.y)),
+    });
   }
   return <div id="nagModalOverlay" className={popup.minimized ? 'window-minimized' : ''}>
-    <section className={`nag-modal ${popup.corner}`} style={position || {}} role="dialog" aria-modal="false" aria-labelledby="nagPopupTitle">
+    <section ref={modalRef} className={`nag-modal ${popup.corner}`} style={position || {}} role="dialog" aria-modal="false" aria-labelledby="nagPopupTitle">
       <div className="nag-modal-top" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}><span className="nag-window-app"><i />JOT TASK REVIEW</span><span id="nagPopupCount">REVIEW IN PROGRESS</span><div className="nag-window-controls"><button type="button" aria-label="Minimize confirmation" onClick={onMinimize}>—</button></div></div>
       <div className="nag-window-body"><div className="nag-window-caption"><span className="nag-modal-icon">!</span><span>FILE MANAGER / SYSTEM MESSAGE</span></div><h2 id="nagPopupTitle">{popup.message[0]}</h2><p className="nag-message">{popup.message[1]}</p><p className="nag-detail">{popup.message[2]}</p><p className="nag-error">{popup.error || ''}</p><div className="nag-window-footer"><span>JOT / COMPLETION SERVICE</span><span>RESPONSE REQUIRED</span></div></div>
       <button type="button" className="nag-close-corner" aria-label="Close confirmation" onClick={onClose}>×</button>
