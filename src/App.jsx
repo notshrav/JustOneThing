@@ -206,6 +206,7 @@ function App() {
   const initialData = useMemo(() => loadData(user), []); // hydrate once; account transitions are handled in onAuth/signOut
   const [tasks, setTasks] = useState(initialData.tasks);
   const [stats, setStats] = useState(initialData.stats);
+  const [escapeOffsets, setEscapeOffsets] = useState({});
   const [filter, setFilter] = useState('all');
   const [notice, setNotice] = useState(null);
   const [overdueTaskId, setOverdueTaskId] = useState(null);
@@ -324,7 +325,27 @@ function App() {
     if (!window.confirm("Reset this account's tasks and lifetime totals? This cannot be undone.")) return;
     const nextStats = { lifetimeCreated: 0, lifetimeCompleted: 0, nextNumber: 1 }; setTasks([]); setStats(nextStats); save([], nextStats); setNotice({ title: 'REGISTER CLEARED', message: 'Your demo data has been reset.', detail: 'A fresh page is ready.' });
   }
-  function deleteNotice() { setNotice(null); }
+  function dodgeCompletionButton(event, task) {
+    if (task.number % 2 !== 0 || task.completed || popup || currentOverdue || event.pointerType !== 'mouse') return;
+    const button = event.currentTarget;
+    const card = button.closest('.task-card');
+    if (!card) return;
+    const buttonRect = button.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+    const current = escapeOffsets[task.id] || { x: 0, y: 0 };
+    const baseLeft = buttonRect.left - current.x;
+    const baseTop = buttonRect.top - current.y;
+    const minX = cardRect.left + 8 - baseLeft;
+    const maxX = cardRect.right - 8 - baseLeft - buttonRect.width;
+    const minY = cardRect.top + 8 - baseTop;
+    const maxY = cardRect.bottom - 8 - baseTop - buttonRect.height;
+    const awayX = event.clientX < buttonRect.left + buttonRect.width / 2 ? 1 : -1;
+    const awayY = event.clientY < buttonRect.top + buttonRect.height / 2 ? 1 : -1;
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const nextX = clamp(current.x + awayX * (70 + Math.random() * 80), minX, maxX);
+    const nextY = clamp(current.y + awayY * (10 + Math.random() * 28), minY, maxY);
+    setEscapeOffsets(offsets => ({ ...offsets, [task.id]: { x: nextX, y: nextY } }));
+  }  function deleteNotice() { setNotice(null); }
 
   if (!user) return <><AuthScreen onAuth={handleAuth} />{notice && <div className="toast" role="status"><strong>{notice.title}</strong><span>{notice.message}</span><button onClick={deleteNotice} aria-label="Dismiss">×</button></div>}</>;
   const firstName = user.name.split(' ')[0];
@@ -337,7 +358,7 @@ function App() {
         <form className="task-form" onSubmit={addTask}><label htmlFor="taskTitle" className="input-label">TASK DESCRIPTION</label><input id="taskTitle" name="title" placeholder="Write something you want to get done..." maxLength="120" required disabled={!!popup || !!currentOverdue} /><div className="form-bottom"><div className="field"><label htmlFor="taskDeadline">DECLARED DUE DATE</label><input id="taskDeadline" name="deadline" type="datetime-local" defaultValue={localDateTime()} required disabled={!!popup || !!currentOverdue} /></div><div className="field"><label htmlFor="taskPriority">REVIEW LEVEL</label><select id="taskPriority" name="priority" defaultValue="NORMAL" disabled={!!popup || !!currentOverdue}><option value="LOW">Low</option><option value="NORMAL">Normal</option><option value="HIGH">High</option></select></div><button type="submit" className="button button-primary add-button" disabled={!!popup || !!currentOverdue}>File task ↗</button></div></form>
       </section>
       <section className="task-section"><div className="section-heading"><div><p className="eyebrow">THE LIST</p><h2>Your tasks</h2></div><label className="filter-label">SHOW <select value={filter} onChange={event => setFilter(event.target.value)}><option value="all">Everything</option><option value="open">To do</option><option value="done">Completed</option></select></label></div>
-        <div className="task-list">{displayedTasks.map(task => { const overdue = isOverdue(task); const even = task.number % 2 === 0; return <article className={`task-card ${task.completed ? 'completed' : ''}`} key={task.id}><button type="button" className="task-number" aria-label={`Task ${task.number}`} onClick={() => { if (even && !task.completed) completeTask(task); else setNotice({ title: 'TASK INDEX', message: `Entry ${String(task.number).padStart(2, '0')}.`, detail: 'All records are indexed sequentially.' }); }}>{String(task.number).padStart(2, '0')}</button><div className="task-content"><h3 className="task-title">{task.title}</h3><div className="task-meta"><span className={`deadline ${overdue ? 'late' : ''}`}>{overdue ? 'OVERDUE · ' : 'DUE · '}{formatDate(task.deadline)}</span><span className="priority">{task.priority}</span>{task.completed && <span>COMPLETED ✓</span>}</div></div><div className="task-actions"><button type="button" className="complete-btn" onClick={() => completeTask(task)} disabled={task.completed || !!popup || !!currentOverdue}>{task.completed ? 'COMPLETED ✓' : 'DECLARE COMPLETE'}</button><button type="button" className="delete-btn" aria-label="Remove task" onClick={() => removeTask(task)} disabled={!!popup}>×</button></div></article>; })}</div>
+        <div className="task-list">{displayedTasks.map(task => { const overdue = isOverdue(task); const even = task.number % 2 === 0; return <article className={`task-card ${task.completed ? 'completed' : ''}`} key={task.id}><button type="button" className="task-number" aria-label={`Task ${task.number}`} onClick={() => { if (even && !task.completed) completeTask(task); else setNotice({ title: 'TASK INDEX', message: `Entry ${String(task.number).padStart(2, '0')}.`, detail: 'All records are indexed sequentially.' }); }}>{String(task.number).padStart(2, '0')}</button><div className="task-content"><h3 className="task-title">{task.title}</h3><div className="task-meta"><span className={`deadline ${overdue ? 'late' : ''}`}>{overdue ? 'OVERDUE · ' : 'DUE · '}{formatDate(task.deadline)}</span><span className="priority">{task.priority}</span>{task.completed && <span>COMPLETED ✓</span>}</div></div><div className="task-actions"><button type="button" className={`complete-btn${even && !task.completed ? ' evadable' : ''}`} style={even && !task.completed ? { translate: `${escapeOffsets[task.id]?.x ?? 0}px ${escapeOffsets[task.id]?.y ?? 0}px` } : undefined} onPointerEnter={event => dodgeCompletionButton(event, task)} onClick={() => completeTask(task)} disabled={task.completed || !!popup || !!currentOverdue}>{task.completed ? 'COMPLETED ✓' : 'DECLARE COMPLETE'}</button><button type="button" className="delete-btn" aria-label="Remove task" onClick={() => removeTask(task)} disabled={!!popup}>×</button></div></article>; })}</div>
         {!displayedTasks.length && <div className="empty-state"><span className="empty-art">✳</span><h3>Nothing on the list just yet.</h3><p>Enjoy the breathing room, or add a task above.</p></div>}
       </section>
       <section className="history-panel" id="history"><div><p className="eyebrow">YOUR LONG GAME</p><h2>Progress that stays.</h2><p>Your lifetime achievements stay with you. Removing a task from your list won't erase the progress you've made.</p></div><div className="lifetime-stat"><strong>{String(stats.lifetimeCompleted).padStart(2, '0')}</strong><span>TASKS COMPLETED<br />IN TOTAL</span></div></section>

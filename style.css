@@ -1057,3 +1057,5 @@ body{background:radial-gradient(ellipse at 50% -22%,#3b2b1d 0,var(--bg) 58%)}bod
 .nag-window-body>.nag-progress-track{display:none!important}
 @media(max-width:520px){.nag-close-corner{width:29px;height:27px}.nag-modal.close-top-left .nag-window-app{padding-left:31px}.nag-modal.close-top-right .nag-window-controls{margin-right:33px}}
 
+
+.task-card .complete-btn.evadable{will-change:translate;transition:translate .17s cubic-bezier(.2,.8,.2,1),transform .16s,background .16s,color .16s,border-color .16s}
